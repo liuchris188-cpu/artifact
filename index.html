@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <!-- 設定網頁字元集為 UTF-8 -->
+    <meta charset="UTF-8">
+    <!-- 設定響應式視埠，確保在行動裝置與桌面端均有良好顯示效果 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 網頁標題 -->
+    <title>像素風塔防遊戲 - Pixel Tower Defense</title>
+    <!-- 引入 Google Fonts 像素字型 'Press Start 2P' -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <!-- 引入 Tailwind CSS CDN 加速基礎佈局 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* === 像素風全域樣式設定 === */
+        * {
+            /* 預設字型改為像素字體 */
+            font-family: 'Press Start 2P', monospace, cursive;
+            /* 關閉圖片與畫布平滑處理，保留鋸齒像素感 */
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            /* 防止選取文字影響遊戲體驗 */
+            user-select: none;
+        }
+
+        /* 遊戲背景：上方藍天，下方綠地 */
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(to bottom, #38b6ff 0%, #38b6ff 40%, #52be80 40%, #27ae60 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            color: #ffffff;
+        }
+
+        /* 像素風按鈕邊框與深色陰影 */
+        .pixel-btn {
+            position: relative;
+            background-color: #f39c12;
+            color: #ffffff;
+            border: 4px solid #000000;
+            box-shadow: inset -4px -4px 0px 0px #d35400, inset 4px 4px 0px 0px #f1c40f;
+            text-shadow: 2px 2px 0px #000;
+            transition: transform 0.1s;
+        }
+
+        /* 按鈕按下時的效果 */
+        .pixel-btn:active {
+            transform: translate(2px, 2px);
+            box-shadow: inset -2px -2px 0px 0px #d35400, inset 2px 2px 0px 0px #f1c40f;
+        }
+
+        /* 按鈕停用樣式 */
+        .pixel-btn:disabled {
+            background-color: #7f8c8d;
+            box-shadow: inset -4px -4px 0px 0px #34495e, inset 4px 4px 0px 0px #bdc3c7;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        /* 像素風格面板邊框 */
+        .pixel-panel {
+            background-color: rgba(44, 62, 80, 0.9);
+            border: 6px solid #000000;
+            box-shadow: 6px 6px 0px 0px rgba(0,0,0,0.4);
+        }
+
+        /* 遊戲畫布邊框外框 */
+        #game-canvas {
+            border: 6px solid #1e272c;
+            background-color: #2ecc71;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            cursor: pointer;
+        }
+
+        /* 選取塔防類型時的虛線外框高亮 */
+        .tower-card-selected {
+            border-color: #f1c40f !important;
+            background-color: rgba(241, 196, 15, 0.2) !important;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 遊戲主容器 -->
+    <div class="flex flex-col items-center w-full max-w-4xl px-4 py-2">
+        
+        <!-- 標題欄區塊 -->
+        <div class="text-center mb-3">
+            <h1 class="text-2xl md:text-3xl text-yellow-300 drop-shadow-[0_4px_0_#000] tracking-wider mb-1">
+                PIXEL TOWER DEFENSE
+            </h1>
+            <p class="text-xs text-sky-100 drop-shadow-[0_2px_0_#000]">保衛綠色草原！防止怪物入侵！</p>
+        </div>
+
+        <!-- 狀態資訊欄 (金幣、生命、波次) -->
+        <div class="pixel-panel w-full p-3 mb-3 flex flex-wrap justify-between items-center text-xs md:text-sm">
+            <!-- 金幣數量顯示 -->
+            <div class="flex items-center space-x-2 text-yellow-400">
+                <span>💰 GOLD:</span>
+                <span id="gold-display">150</span>
+            </div>
+            <!-- 生命值顯示 -->
+            <div class="flex items-center space-x-2 text-red-400">
+                <span>❤️ LIVES:</span>
+                <span id="lives-display">20</span>
+            </div>
+            <!-- 當前波次顯示 -->
+            <div class="flex items-center space-x-2 text-cyan-300">
+                <span>🌊 WAVE:</span>
+                <span id="wave-display">1</span>
+            </div>
+        </div>
+
+        <!-- 主遊戲視窗 (Canvas 畫布與 Overlay 彈窗) -->
+        <div class="relative">
+            <!-- Canvas 畫布 (固定解析度 800x450，保持像素風清晰度) -->
+            <canvas id="game-canvas" width="800" height="450"></canvas>
+
+            <!-- 遊戲開始 / 結束 overlay 彈窗 -->
+            <div id="game-overlay" class="absolute inset-0 bg-black/80 flex flex-col justify-center items-center p-6 text-center z-10">
+                <!-- 彈窗大標題 -->
+                <h2 id="overlay-title" class="text-2xl md:text-4xl text-yellow-400 mb-4 drop-shadow-[0_4px_0_#000]">
+                    PIXEL DEFENSE
+                </h2>
+                <!-- 彈窗內容說明 -->
+                <p id="overlay-desc" class="text-xs md:text-sm text-gray-200 mb-6 leading-relaxed max-w-md">
+                    點擊下方選擇防禦塔類型，並放置於綠色草地上。<br>準備好後點擊開始下一波！
+                </p>
+                <!-- 啟動遊戲/重新開始按鈕 -->
+                <button id="start-btn" class="pixel-btn px-6 py-3 text-sm md:text-base cursor-pointer">
+                    START GAME
+                </button>
+            </div>
+        </div>
+
+        <!-- 遊戲下方控制與建塔工具列 -->
+        <div class="pixel-panel w-full p-3 mt-3 flex flex-wrap justify-between items-center gap-2">
+            
+            <!-- 塔選擇區域 -->
+            <div class="flex items-center space-x-2">
+                <!-- 箭塔選擇卡片 -->
+                <button id="select-archer" class="pixel-btn p-2 text-xs flex flex-col items-center border-2 border-gray-600 bg-gray-800 tower-card-selected" onclick="selectTowerType('archer')">
+                    <span class="text-green-400 font-bold mb-1">🏹 箭塔</span>
+                    <span class="text-[10px] text-yellow-300">💰 100</span>
+                </button>
+                
+                <!-- 法師塔選擇卡片 -->
+                <button id="select-mage" class="pixel-btn p-2 text-xs flex flex-col items-center border-2 border-gray-600 bg-gray-800" onclick="selectTowerType('mage')">
+                    <span class="text-purple-400 font-bold mb-1">🔮 法師塔</span>
+                    <span class="text-[10px] text-yellow-300">💰 175</span>
+                </button>
+
+                <!-- 重砲塔選擇卡片 -->
+                <button id="select-cannon" class="pixel-btn p-2 text-xs flex flex-col items-center border-2 border-gray-600 bg-gray-800" onclick="selectTowerType('cannon')">
+                    <span class="text-red-400 font-bold mb-1">💣 砲塔</span>
+                    <span class="text-[10px] text-yellow-300">💰 250</span>
+                </button>
+            </div>
+
+            <!-- 控制按鈕區 -->
+            <div class="flex items-center space-x-2">
+                <!-- 啟動下一波怪物按鈕 -->
+                <button id="next-wave-btn" class="pixel-btn px-4 py-3 text-xs bg-emerald-600 cursor-pointer" onclick="startNextWave()">
+                    NEXT WAVE ⚔️
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript 遊戲核心邏輯 -->
+    <script>
+        // ==========================================
+        // 1. 全域變數與遊戲設定 (Global Variables)
+        // ==========================================
+
+        // 取得 Canvas 元素與 2D 渲染上下文
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI 數據顯示元素
+        const goldDisplay = document.getElementById('gold-display');
+        const livesDisplay = document.getElementById('lives-display');
+        const waveDisplay = document.getElementById('wave-display');
+        const gameOverlay = document.getElementById('game-overlay');
+        const overlayTitle = document.getElementById('overlay-title');
+        const overlayDesc = document.getElementById('overlay-desc');
+        const startBtn = document.getElementById('start-btn');
+        const nextWaveBtn = document.getElementById('next-wave-btn');
+
+        // 遊戲狀態變數
+        let gold = 175;              // 初期玩家金幣
+        let lives = 20;              // 初期玩家生命值
+        let wave = 0;                // 當前波次
+        let isWaveActive = false;    // 是否處於波次進行中
+        let gameOver = false;        // 遊戲是否結束
+        let gameStarted = false;     // 遊戲是否已點擊開始
+        let selectedTowerType = 'archer'; // 當前選擇準備建立的塔類型
+
+        // 遊戲物件陣列
+        let enemies = [];      // 存放當前波次存活的敵人
+        let towers = [];       // 存放已建造的防禦塔
+        let projectiles = [];  // 存放飛行中的投射物/砲彈
+        let particles = [];    // 存放擊中與爆炸時的像素粒子效果
+
+        // 道路點矩陣 (Grid Cell 系統，以 50x50 為一格)
+        const GRID_SIZE = 50;  
+        const COLS = canvas.width / GRID_SIZE;  // 16 格
+        const ROWS = canvas.height / GRID_SIZE; // 9 格
+
+        // 敵人的行走路線 (Waypoints 座標陣列)
+        const waypoints = [
+            { x: -25, y: 125 }, // 起點 (左邊畫布外)
+            { x: 225, y: 125 }, // 第一個轉彎點
+            { x: 225, y: 325 }, // 第二個轉彎點
+            { x: 525, y: 325 }, // 第三個轉彎點
+            { x: 525, y: 175 }, // 第四個轉彎點
+            { x: 725, y: 175 }, // 第五個轉彎點
+            { x: 725, y: 475 }  // 終點 (下方畫布外)
+        ];
+
+        // 塔的屬性設定集
+        const TOWER_CONFIGS = {
+            archer: { name: '🏹 箭塔', cost: 100, range: 140, cooldown: 25, damage: 15, color: '#2ecc71', bulletColor: '#f1c40f', bulletSpeed: 8, splash: 0 },
+            mage:   { name: '🔮 法師塔', cost: 175, range: 120, cooldown: 45, damage: 35, color: '#9b59b6', bulletColor: '#a29bfe', bulletSpeed: 6, splash: 0 },
+            cannon: { name: '💣 砲塔', cost: 250, range: 160, cooldown: 70, damage: 60, color: '#e74c3c', bulletColor: '#e67e22', bulletSpeed: 4, splash: 50 }
+        };
+
+        // 地圖網格類型：0 = 草地 (可蓋塔), 1 = 道路 (不可蓋塔)
+        const mapGrid = [
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+            [1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0],
+            [0,0,0,0,1,0,0,1,1,1,1,1,0,0,0,0],
+            [0,0,0,0,1,1,1,1,0,0,0,1,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0],
+            [0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0]
+        ];
+
+        // ==========================================
+        // 2. 類別定義 (Classes: Enemy, Tower, Projectile, Particle)
+        // ==========================================
+
+        // --- 敵人類別 ---
+        class Enemy {
+            constructor(typeMultiplier = 1) {
+                this.x = waypoints[0].x;
+                this.y = waypoints[0].y;
+                this.width = 24;
+                this.height = 24;
+                this.waypointIndex = 0;
+                
+                // 根據波次增加血量與速度
+                this.maxHp = Math.floor(40 * typeMultiplier);
+                this.hp = this.maxHp;
+                this.speed = 1.2 + (wave * 0.05);
+                this.goldValue = 20 + wave * 2;
+                
+                // 像素畫閃爍幀動畫計數器
+                this.animFrame = 0;
+            }
+
+            // 更新敵人位置
+            update() {
+                this.animFrame++;
+                const target = waypoints[this.waypointIndex + 1];
+
+                if (target) {
+                    // 計算到下一個路徑點的方向 vector
+                    const dx = target.x - this.x;
+                    const dy = target.y - this.y;
+                    const distance = Math.hypot(dx, dy);
+
+                    // 移向目標點
+                    if (distance < this.speed) {
+                        this.x = target.x;
+                        this.y = target.y;
+                        this.waypointIndex++;
+                    } else {
+                        this.x += (dx / distance) * this.speed;
+                        this.y += (dy / distance) * this.speed;
+                    }
+                }
+            }
+
+            // 繪製像素風格敵人 (史萊姆 / 怪物)
+            draw() {
+                ctx.save();
+                
+                // 體脈動小動畫效果
+                const bounce = Math.sin(this.animFrame * 0.15) * 3;
+
+                // 畫主體 (紅紫色像素史萊姆)
+                ctx.fillStyle = '#e74c3c';
+                ctx.fillRect(this.x - 12, this.y - 12 + bounce, 24, 24);
+
+                // 內核質感
+                ctx.fillStyle = '#c0392b';
+                ctx.fillRect(this.x - 8, this.y - 8 + bounce, 16, 16);
+
+                // 眼睛
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(this.x - 6, this.y - 6 + bounce, 4, 4);
+                ctx.fillRect(this.x + 2, this.y - 6 + bounce, 4, 4);
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(this.x - 4, this.y - 4 + bounce, 2, 2);
+                ctx.fillRect(this.x + 4, this.y - 4 + bounce, 2, 2);
+
+                // 繪製血條背景與目前血量
+                const healthBarWidth = 26;
+                const hpPercent = Math.max(0, this.hp / this.maxHp);
+                
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(this.x - 13, this.y - 20, healthBarWidth, 5);
+                ctx.fillStyle = hpPercent > 0.5 ? '#2ecc71' : '#e74c3c';
+                ctx.fillRect(this.x - 13, this.y - 20, healthBarWidth * hpPercent, 5);
+
+                ctx.restore();
+            }
+        }
+
+        // --- 防禦塔類別 ---
+        class Tower {
+            constructor(x, y, type) {
+                this.x = x; // 網格中心點 X 座標
+                this.y = y; // 網格中心點 Y 座標
+                this.type = type;
+                this.config = TOWER_CONFIGS[type];
+                this.cooldownTimer = 0;
+                this.target = null;
+                this.angle = 0; // 砲塔旋轉角度
+            }
+
+            // 更新防禦塔狀態與尋找目標
+            update() {
+                if (this.cooldownTimer > 0) {
+                    this.cooldownTimer--;
+                }
+
+                // 尋找攻擊範圍內第一個敵人
+                this.target = null;
+                for (let enemy of enemies) {
+                    const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+                    if (dist <= this.config.range) {
+                        this.target = enemy;
+                        // 計算砲管指向的角度
+                        this.angle = Math.atan2(enemy.y - this.y, enemy.x - this.x);
+                        break;
+                    }
+                }
+
+                // 冷卻結束且有目標時發射砲彈
+                if (this.target && this.cooldownTimer <= 0) {
+                    this.shoot();
+                    this.cooldownTimer = this.config.cooldown;
+                }
+            }
+
+            // 發射投射物
+            shoot() {
+                projectiles.push(new Projectile(
+                    this.x, 
+                    this.y, 
+                    this.target, 
+                    this.config.damage, 
+                    this.config.bulletSpeed, 
+                    this.config.bulletColor,
+                    this.config.splash
+                ));
+            }
+
+            // 繪製像素風格防禦塔
+            draw() {
+                ctx.save();
+                
+                // 1. 塔基座 (灰色方塊石階)
+                ctx.fillStyle = '#7f8c8d';
+                ctx.fillRect(this.x - 20, this.y - 20, 40, 40);
+                ctx.fillStyle = '#bdc3c7';
+                ctx.fillRect(this.x - 16, this.y - 16, 32, 32);
+
+                // 2. 塔主體 (根據種類著色)
+                ctx.fillStyle = this.config.color;
+                ctx.fillRect(this.x - 12, this.y - 12, 24, 24);
+
+                // 3. 旋轉砲管 / 頂部像素裝飾
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                
+                ctx.fillStyle = '#2c3e50';
+                ctx.fillRect(0, -4, 16, 8); // 砲管外觀
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(12, -2, 4, 4);  // 砲口
+
+                ctx.restore();
+            }
+        }
+
+        // --- 投射物 / 砲彈類別 ---
+        class Projectile {
+            constructor(x, y, target, damage, speed, color, splashRadius) {
+                this.x = x;
+                this.y = y;
+                this.target = target;
+                this.damage = damage;
+                this.speed = speed;
+                this.color = color;
+                this.splashRadius = splashRadius;
+                this.active = true; // 狀態標籤
+            }
+
+            // 更新砲彈位置與判定命中
+            update() {
+                if (!this.target || this.target.hp <= 0) {
+                    // 若目標不存在，持續向前行進後消失
+                    this.active = false;
+                    return;
+                }
+
+                // 計算移動方向
+                const dx = this.target.x - this.x;
+                const dy = this.target.y - this.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist < this.speed) {
+                    // 擊中目標！
+                    this.hit();
+                } else {
+                    this.x += (dx / dist) * this.speed;
+                    this.y += (dy / dist) * this.speed;
+                }
+            }
+
+            // 擊中傷害結算
+            hit() {
+                this.active = false;
+
+                if (this.splashRadius > 0) {
+                    // 範圍傷害 (濺射/砲彈)
+                    createExplosion(this.x, this.y, this.color, 15);
+                    enemies.forEach(enemy => {
+                        const d = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+                        if (d <= this.splashRadius) {
+                            enemy.hp -= this.damage;
+                        }
+                    });
+                } else {
+                    // 單體傷害 (箭矢/法術)
+                    createExplosion(this.x, this.y, this.color, 6);
+                    this.target.hp -= this.damage;
+                }
+            }
+
+            // 繪製像素砲彈
+            draw() {
+                ctx.save();
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x - 4, this.y - 4, 8, 8);
+                ctx.restore();
+            }
+        }
+
+        // --- 像素粒子擊中效果類別 ---
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.size = Math.floor(Math.random() * 4) + 2; // 2~5 像素大小
+                this.vx = (Math.random() - 0.5) * 6; // X 軸擴散速度
+                this.vy = (Math.random() - 0.5) * 6; // Y 軸擴散速度
+                this.life = 1.0; // 透明度/存活時間
+                this.decay = Math.random() * 0.05 + 0.02; // 衰減率
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.life);
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+                ctx.restore();
+            }
+        }
+
+        // ==========================================
+        // 3. 遊戲邏輯與輔助函式 (Game Logic)
+        // ==========================================
+
+        // 產生粒子爆炸效果
+        function createExplosion(x, y, color, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        // 繪製地圖 (綠地與土黃色泥土小徑)
+        function drawMap() {
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const x = c * GRID_SIZE;
+                    const y = r * GRID_SIZE;
+
+                    if (mapGrid[r][c] === 1) {
+                        // 道路 (泥土色)
+                        ctx.fillStyle = '#d35400';
+                        ctx.fillRect(x, y, GRID_SIZE, GRID_SIZE);
+                        ctx.fillStyle = '#e67e22';
+                        ctx.fillRect(x + 4, y + 4, GRID_SIZE - 8, GRID_SIZE - 8);
+                    } else {
+                        // 草地區域
+                        ctx.fillStyle = '#27ae60';
+                        ctx.fillRect(x, y, GRID_SIZE, GRID_SIZE);
+                        // 隨機像素點點裝飾草地質感
+                        ctx.fillStyle = '#2ecc71';
+                        ctx.fillRect(x + 6, y + 6, 8, 8);
+                        ctx.fillRect(x + 30, y + 26, 6, 6);
+                    }
+
+                    // 網格邊界微弱細線
+                    ctx.strokeStyle = 'rgba(0,0,0,0.05)';
+                    ctx.strokeRect(x, y, GRID_SIZE, GRID_SIZE);
+                }
+            }
+        }
+
+        // 啟動下一波敵人
+        function startNextWave() {
+            if (isWaveActive || gameOver) return;
+
+            wave++;
+            waveDisplay.textContent = wave;
+            isWaveActive = true;
+            nextWaveBtn.disabled = true;
+
+            // 計算本波生成的敵人數量
+            const enemyCount = 5 + wave * 3;
+            let spawned = 0;
+
+            // 使用 setInterval 依序生成敵人
+            const spawnInterval = setInterval(() => {
+                if (gameOver) {
+                    clearInterval(spawnInterval);
+                    return;
+                }
+
+                // 隨波次提升敵人強度
+                const hpMultiplier = 1 + (wave - 1) * 0.3;
+                enemies.push(new Enemy(hpMultiplier));
+                spawned++;
+
+                if (spawned >= enemyCount) {
+                    clearInterval(spawnInterval);
+                }
+            }, 1000); // 每秒生成一隻
+        }
+
+        // 選擇放置的塔類型
+        function selectTowerType(type) {
+            selectedTowerType = type;
+            document.querySelectorAll('.pixel-panel button').forEach(btn => {
+                btn.classList.remove('tower-card-selected');
+            });
+            document.getElementById(`select-${type}`).classList.add('tower-card-selected');
+        }
+
+        // 點擊 Canvas 放置防禦塔
+        canvas.addEventListener('click', (event) => {
+            if (gameOver || !gameStarted) return;
+
+            // 取得點擊座標相對畫布的位置
+            const rect = canvas.getBoundingClientRect();
+            const clickX = event.clientX - rect.left;
+            const clickY = event.clientY - rect.top;
+
+            // 換算為網格行列數
+            const col = Math.floor(clickX / GRID_SIZE);
+            const row = Math.floor(clickY / GRID_SIZE);
+
+            // 檢查是否為草地且尚未建造塔
+            if (mapGrid[row][col] === 0) {
+                const config = TOWER_CONFIGS[selectedTowerType];
+                
+                // 檢查金幣是否足夠
+                if (gold >= config.cost) {
+                    const centerX = col * GRID_SIZE + GRID_SIZE / 2;
+                    const centerY = row * GRID_SIZE + GRID_SIZE / 2;
+
+                    // 建造防禦塔
+                    towers.push(new Tower(centerX, centerY, selectedTowerType));
+                    
+                    // 扣除金幣並標記此格已有建築
+                    gold -= config.cost;
+                    mapGrid[row][col] = 2; // 2 表示已放置塔
+                    goldDisplay.textContent = gold;
+                }
+            }
+        });
+
+        // 觸發遊戲結束 (失敗)
+        function triggerGameOver() {
+            gameOver = true;
+            overlayTitle.textContent = "GAME OVER";
+            overlayTitle.className = "text-2xl md:text-4xl text-red-500 mb-4 drop-shadow-[0_4px_0_#000]";
+            overlayDesc.textContent = `怪物突破了防線！你總共存活了 ${wave} 波攻擊。`;
+            startBtn.textContent = "TRY AGAIN";
+            gameOverlay.classList.remove('hidden');
+        }
+
+        // 初始化 / 重置遊戲
+        function resetGame() {
+            gold = 175;
+            lives = 20;
+            wave = 0;
+            gameOver = false;
+            gameStarted = true;
+            isWaveActive = false;
+
+            enemies = [];
+            towers = [];
+            projectiles = [];
+            particles = [];
+
+            // 重置地圖格狀態
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (mapGrid[r][c] === 2) mapGrid[r][c] = 0;
+                }
+            }
+
+            // 更新 UI
+            goldDisplay.textContent = gold;
+            livesDisplay.textContent = lives;
+            waveDisplay.textContent = wave;
+            nextWaveBtn.disabled = false;
+            gameOverlay.classList.add('hidden');
+        }
+
+        // ==========================================
+        // 4. 遊戲主循環 (Main Game Loop)
+        // ==========================================
+        function gameLoop() {
+            // 清除畫布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. 繪製背景與地圖
+            drawMap();
+
+            // 2. 更新與繪製防禦塔
+            towers.forEach(tower => {
+                tower.update();
+                tower.draw();
+            });
+
+            // 3. 更新與繪製敵人
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                enemy.update();
+                enemy.draw();
+
+                // 敵人到達終點處理
+                if (enemy.waypointIndex >= waypoints.length - 1) {
+                    lives--;
+                    livesDisplay.textContent = lives;
+                    enemies.splice(i, 1);
+
+                    // 檢查生命值是否扣完
+                    if (lives <= 0) {
+                        triggerGameOver();
+                    }
+                    continue;
+                }
+
+                // 敵人死亡處理 (獲得金幣)
+                if (enemy.hp <= 0) {
+                    gold += enemy.goldValue;
+                    goldDisplay.textContent = gold;
+                    createExplosion(enemy.x, enemy.y, '#e74c3c', 12);
+                    enemies.splice(i, 1);
+                }
+            }
+
+            // 檢查當前波次是否結束
+            if (isWaveActive && enemies.length === 0) {
+                isWaveActive = false;
+                nextWaveBtn.disabled = false;
+            }
+
+            // 4. 更新與繪製砲彈
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const proj = projectiles[i];
+                proj.update();
+                proj.draw();
+
+                if (!proj.active) {
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            // 5. 更新與繪製擊中粒子特效
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw();
+
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            // 循環持續請求下一幀
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ==========================================
+        // 5. 事件監聽與遊戲啟動 (Init Event Handlers)
+        // ==========================================
+        startBtn.addEventListener('click', () => {
+            resetGame();
+        });
+
+        // 網頁載入完成後繪製初始視圖並開始主循環
+        window.onload = () => {
+            drawMap();
+            requestAnimationFrame(gameLoop);
+        };
+
+    </script>
+</body>
+</html>
